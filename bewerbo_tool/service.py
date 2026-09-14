@@ -1,0 +1,48 @@
+from __future__ import annotations
+
+from concurrent.futures import Future, ThreadPoolExecutor
+from threading import BoundedSemaphore
+from typing import Dict
+
+from .engine import WorkflowEngine
+from .models import RunRecord
+from .spec_loader import WorkflowSpec
+
+
+class WorkflowService:
+    def __init__(self, engine: WorkflowEngine, max_concurrent_runs: int = 2):
+        self.engine = engine
+        self._executor = ThreadPoolExecutor(max_workers=max_concurrent_runs)
+        self._semaphore = BoundedSemaphore(value=max_concurrent_runs)
+        self._futures: Dict[str, Future] = {}
+
+    def start(self, spec: WorkflowSpec, input_data: Dict, idempotency_key: str | None = None) -> RunRecord:
+        run = self.engine.create_run(spec, input_data, idempotency_key=idempotency_key)
+
+        if run.status.value in {"running", "pending"}:
+            self._submit(spec, run.run_id, resume=True)
+        return run
+
+    def _submit(self, spec: WorkflowSpec, run_id: str, resume: bool) -> None:
+        if run_id in self._futures and not self._futures[run_id].done():
+            return
+
+        def worker() -> RunRecord:
+            with self._semaphore:
+                return self.engine.execute(spec, run_id, resume=resume)
+
+        self._futures[run_id] = self._executor.submit(worker)
+
+    def pause(self, run_id: str) -> RunRecord:
+        return self.engine.request_action(run_id, "pause")
+
+    def cancel(self, run_id: str) -> RunRecord:
+        return self.engine.request_action(run_id, "cancel")
+
+    def resume(self, spec: WorkflowSpec, run_id: str) -> RunRecord:
+        run = self.engine.request_action(run_id, "resume")
+        self._submit(spec, run_id, resume=True)
+        return run
+
+    def rerun_failed_step(self, spec: WorkflowSpec, run_id: str) -> RunRecord:
+        return self.engine.rerun_failed_step(spec, run_id)

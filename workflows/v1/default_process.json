@@ -1,0 +1,42 @@
+{
+  "name": "bewerbo_default_process",
+  "version": "1.0.0",
+  "input_schema": {
+    "required": ["item_id", "payload"]
+  },
+  "steps": [
+    {
+      "id": "sanitize",
+      "type": "sanitize_input",
+      "params": {
+        "fields": ["payload"]
+      }
+    },
+    {
+      "id": "normalize",
+      "type": "transform",
+      "params": {
+        "mappings": {
+          "normalized_payload": "payload"
+        }
+      }
+    },
+    {
+      "id": "integration",
+      "type": "external_call",
+      "retries": 2,
+      "backoff_seconds": 0.01,
+      "params": {
+        "target": "mock://bewerbo",
+        "payload_fields": ["item_id", "normalized_payload"]
+      }
+    },
+    {
+      "id": "output",
+      "type": "emit_output",
+      "params": {
+        "fields": ["item_id", "normalized_payload", "integration_status"]
+      }
+    }
+  ]
+}

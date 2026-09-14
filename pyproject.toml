@@ -1,0 +1,12 @@
+[project]
+name = "bewerbo-tool"
+version = "0.1.0"
+description = "Config-driven workflow automation tool"
+requires-python = ">=3.10"
+
+[project.scripts]
+bewerbo-tool = "bewerbo_tool.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
