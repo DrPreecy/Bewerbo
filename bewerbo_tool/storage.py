@@ -5,7 +5,7 @@ import os
 import threading
 import uuid
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 from .models import RunRecord
 
@@ -34,7 +34,7 @@ class JsonStateStore:
                 data["idempotency"][run.idempotency_key] = run.run_id
             self._write(data)
 
-    def save_run_if_idempotency_absent(self, run: RunRecord) -> RunRecord:
+    def save_run_if_idempotency_absent(self, run: RunRecord) -> Tuple[RunRecord, bool]:
         with self._lock:
             data = self._read()
             if run.idempotency_key:
@@ -42,13 +42,13 @@ class JsonStateStore:
                 if existing_run_id:
                     payload = data["runs"].get(existing_run_id)
                     if payload:
-                        return RunRecord.from_dict(payload)
+                        return RunRecord.from_dict(payload), False
 
             data["runs"][run.run_id] = run.to_dict()
             if run.idempotency_key:
                 data["idempotency"][run.idempotency_key] = run.run_id
             self._write(data)
-            return run
+            return run, True
 
     def get_run(self, run_id: str) -> Optional[RunRecord]:
         with self._lock:

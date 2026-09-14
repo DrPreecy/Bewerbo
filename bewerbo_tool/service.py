@@ -18,9 +18,13 @@ class WorkflowService:
         self._futures_lock = Lock()
 
     def start(self, spec: WorkflowSpec, input_data: Dict, idempotency_key: str | None = None) -> RunRecord:
-        run = self.engine.create_run(spec, input_data, idempotency_key=idempotency_key)
+        run, created_new = self.engine.create_run_with_flag(
+            spec,
+            input_data,
+            idempotency_key=idempotency_key,
+        )
 
-        if run.status.value in {"running", "pending"}:
+        if created_new and run.status.value in {"running", "pending"}:
             self._submit(spec, run.run_id, resume=False)
         return run
 

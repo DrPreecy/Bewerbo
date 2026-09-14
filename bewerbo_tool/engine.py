@@ -21,6 +21,15 @@ class WorkflowEngine:
         input_data: Dict,
         idempotency_key: str | None = None,
     ) -> RunRecord:
+        run, _ = self.create_run_with_flag(spec, input_data, idempotency_key=idempotency_key)
+        return run
+
+    def create_run_with_flag(
+        self,
+        spec: WorkflowSpec,
+        input_data: Dict,
+        idempotency_key: str | None = None,
+    ) -> tuple[RunRecord, bool]:
         validate_input(spec.input_schema, input_data)
 
         run = RunRecord(
@@ -114,6 +123,7 @@ class WorkflowEngine:
                 started_at=started,
                 finished_at=utc_now_iso(),
                 output=output,
+                context_snapshot=dict(run.context),
                 error=error_message,
             )
             run.step_results[step.id] = result
@@ -170,6 +180,7 @@ class WorkflowEngine:
 
         for step in spec.steps[failed_index:]:
             run.step_results.pop(step.id, None)
+        run.context = self._context_at_step_boundary(spec, run, failed_index)
 
         run.current_step_index = failed_index
         run.status = RunStatus.PENDING
@@ -253,6 +264,15 @@ class WorkflowEngine:
         if isinstance(value, list):
             return [self._redact_value(key, item) for item in value]
         return value
+
+    def _context_at_step_boundary(self, spec: WorkflowSpec, run: RunRecord, step_index: int) -> Dict:
+        if step_index <= 0:
+            return dict(run.input_data)
+        previous_step_id = spec.steps[step_index - 1].id
+        previous_result = run.step_results.get(previous_step_id)
+        if previous_result and previous_result.status == StepStatus.COMPLETED:
+            return dict(previous_result.context_snapshot or run.input_data)
+        return dict(run.input_data)
 
     def _preserve_requested_action(self, run: RunRecord) -> None:
         if run.requested_action:

@@ -63,6 +63,6 @@ python -m bewerbo_tool.cli \
 
 - Input validation is enforced from workflow `input_schema.required`.
 - String sanitization removes low ASCII control characters from configured fields.
-- Sensitive keys in audit details (`secret`, `token`, `password`, `key`) are redacted.
+- Sensitive audit fields are recursively redacted for names containing `secret`, `token`, or `password`, and explicit keys like `api_key`, `private_key`, `access_key`, `client_secret`, and `authorization`.
 - Max concurrent runs are bounded by the service semaphore.
 - Failed runs retain step-level status and errors for deterministic resume/rerun behavior.

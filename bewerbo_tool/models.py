@@ -54,6 +54,7 @@ class StepResult:
     started_at: str
     finished_at: str
     output: Dict[str, Any] = field(default_factory=dict)
+    context_snapshot: Dict[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
 
 
@@ -104,6 +105,7 @@ class RunRecord:
                     "started_at": v.started_at,
                     "finished_at": v.finished_at,
                     "output": v.output,
+                    "context_snapshot": v.context_snapshot,
                     "error": v.error,
                 }
                 for k, v in self.step_results.items()
@@ -142,6 +144,7 @@ class RunRecord:
                     started_at=v["started_at"],
                     finished_at=v["finished_at"],
                     output=v.get("output", {}),
+                    context_snapshot=v.get("context_snapshot", {}),
                     error=v.get("error"),
                 )
                 for k, v in data.get("step_results", {}).items()

@@ -194,6 +194,7 @@ class TestEngine(unittest.TestCase):
 
             first = engine.execute(spec, run.run_id)
             self.assertEqual(first.status, RunStatus.FAILED)
+            spec.steps[0].params["failures"] = 0
 
             recovered = engine.rerun_failed_step(spec, run.run_id)
             self.assertEqual(recovered.status, RunStatus.COMPLETED)
@@ -270,12 +271,45 @@ class TestEngine(unittest.TestCase):
             run = engine.create_run(spec, {"item_id": "11", "payload": "x"})
             failed = engine.execute(spec, run.run_id)
             self.assertEqual(failed.status, RunStatus.FAILED)
+            spec.steps[0].params["failures"] = 0
 
             pending = service.rerun_failed_step(spec, run.run_id)
             self.assertEqual(pending.status, RunStatus.PENDING)
 
             completed = service.wait(run.run_id, timeout=2)
             self.assertEqual(completed.status, RunStatus.COMPLETED)
+
+    def test_service_sequential_idempotent_start_does_not_resubmit(self):
+        with tempfile.TemporaryDirectory() as td:
+            engine, spec = self._engine_and_spec(Path(td))
+            service = WorkflowService(engine=engine, max_concurrent_runs=2)
+
+            original_execute = engine.execute
+            counter_lock = threading.Lock()
+            call_count = {"n": 0}
+
+            def counted_execute(spec_arg, run_id_arg, resume=False):
+                with counter_lock:
+                    call_count["n"] += 1
+                time.sleep(0.05)
+                return original_execute(spec_arg, run_id_arg, resume=resume)
+
+            engine.execute = counted_execute  # type: ignore[method-assign]
+
+            first = service.start(
+                spec,
+                {"item_id": "99", "payload": "x"},
+                idempotency_key="seq-key",
+            )
+            second = service.start(
+                spec,
+                {"item_id": "99", "payload": "x"},
+                idempotency_key="seq-key",
+            )
+
+            self.assertEqual(first.run_id, second.run_id)
+            service.wait(first.run_id, timeout=2)
+            self.assertEqual(call_count["n"], 1)
 
 
 if __name__ == "__main__":
