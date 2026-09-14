@@ -12,10 +12,12 @@ from .storage import JsonStateStore
 
 
 def _read_json(path: str) -> dict:
+    """ read json."""
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """build parser."""
     parser = argparse.ArgumentParser(description="Run a config-driven workflow")
     parser.add_argument("--spec", required=True, help="Path to workflow spec JSON")
     parser.add_argument("--state", required=True, help="Path to state storage JSON")
@@ -40,6 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    """main."""
     args = build_parser().parse_args()
     spec = load_workflow_spec(args.spec)
     store = JsonStateStore(args.state)
