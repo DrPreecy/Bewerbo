@@ -19,15 +19,18 @@ class DecisionThresholds:
 
 
 def normalize_skill(skill: str) -> str:
+    """normalize skill."""
     return skill.strip().lower().replace("-", " ")
 
 
 def normalize_language(language: str) -> str:
+    """normalize language."""
     language = language.strip().lower().replace("-", "/").replace("_", "/")
     return {"de": "german", "deutsch": "german", "en": "english", "englisch": "english"}.get(language, language)
 
 
 def build_master_profile(input_data: Dict[str, Any]) -> Dict[str, Any]:
+    """build master profile."""
     basics = input_data.get("candidate_basics", {})
     interview = input_data.get("interview_answers", {})
     skills = [normalize_skill(s) for s in interview.get("skills", [])]
@@ -53,6 +56,7 @@ def build_master_profile(input_data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def analyze_rejection(input_data: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+    """analyze rejection."""
     text = str(input_data.get("rejection_feedback", "")).lower()
     risks = []
     if "absage" in text or "nicht" in text:
@@ -71,6 +75,7 @@ def analyze_rejection(input_data: Dict[str, Any], context: Dict[str, Any]) -> Di
 
 
 def score_job(job: Dict[str, Any], profile: Dict[str, Any]) -> Dict[str, Any]:
+    """score job."""
     skills = set(profile.get("skills", []))
     wanted = {normalize_skill(s) for s in job.get("required_skills", [])}
     preferred = {normalize_skill(s) for s in job.get("preferred_skills", [])}
@@ -106,6 +111,7 @@ def score_job(job: Dict[str, Any], profile: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def classify_jobs(scored_jobs: List[Dict[str, Any]], thresholds: DecisionThresholds) -> List[Dict[str, Any]]:
+    """classify jobs."""
     classified = []
     for job in scored_jobs:
         score, blockers = float(job.get("match_score", 0.0)), job.get("blockers", [])
@@ -122,12 +128,14 @@ def classify_jobs(scored_jobs: List[Dict[str, Any]], thresholds: DecisionThresho
 
 
 def render_template(template: str, data: Dict[str, Any]) -> str:
+    """render template."""
     for key, value in data.items():
         template = template.replace(f"{{{{{key}}}}}", str(value))
     return template
 
 
 def build_variants_for_job(job: Dict[str, Any], profile: Dict[str, Any], templates: Dict[str, str]) -> Dict[str, Any]:
+    """build variants for job."""
     base = {
         "name": profile.get("name", "Candidate"),
         "role": job.get("title", "Duales Studium"),
@@ -154,6 +162,7 @@ def build_variants_for_job(job: Dict[str, Any], profile: Dict[str, Any], templat
 
 
 def quality_checks(application_set: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """quality checks."""
     checks = []
     for app in application_set:
         for variant in app.get("variants", []):
