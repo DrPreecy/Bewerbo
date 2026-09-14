@@ -1,11 +1,17 @@
 # Bewerbo
 
-Config-driven workflow automation tool with run state persistence, retries, idempotency, resume support, controls, and audit logging.
+Ready-to-run Bewerbungsystem for dual-study application workflows:
+- Profil-Interview → Master-Profil
+- Job-Research/Scoring/Decision
+- CV + Anschreiben Varianten (v1..v5)
+- Quality checks + output package
 
 ## Project layout
 
-- `bewerbo_tool/` - engine, models, executors, service, CLI
-- `workflows/v1/default_process.json` - versioned workflow definition
+- `bewerbo_tool/` - engine, domain logic, executors, service, CLI
+- `workflows/v1/bewerbo_application_process.json` - Bewerbo main process
+- `assets/input/bewerbo_sample_input.json` - starter input payload
+- `assets/templates/` - master CV and cover-letter templates
 - `tests/` - unit/integration/regression-style tests
 
 ## Quick start
@@ -19,16 +25,16 @@ Config-driven workflow automation tool with run state persistence, retries, idem
 }
 ```
 
-2. Start a run:
+2. Start the Bewerbo process:
 
 ```bash
 python -m bewerbo_tool.cli \
-  --spec workflows/v1/default_process.json \
+  --spec /home/runner/work/Bewerbo/Bewerbo/workflows/v1/bewerbo_application_process.json \
   --state state/runs.json \
   start \
-  --input /absolute/path/to/input.json \
+  --input /home/runner/work/Bewerbo/Bewerbo/assets/input/bewerbo_sample_input.json \
   --wait \
-  --idempotency-key item-123
+  --idempotency-key candidate-max-001
 ```
 
 `start` runs asynchronously by default; use `--wait` (optionally with `--timeout`) to block until completion.
@@ -37,7 +43,7 @@ python -m bewerbo_tool.cli \
 
 ```bash
 python -m bewerbo_tool.cli \
-  --spec workflows/v1/default_process.json \
+  --spec /home/runner/work/Bewerbo/Bewerbo/workflows/v1/bewerbo_application_process.json \
   --state state/runs.json \
   status \
   --run-id <run-id>
@@ -54,10 +60,21 @@ python -m bewerbo_tool.cli \
 
 ```bash
 python -m bewerbo_tool.cli \
-  --spec workflows/v1/default_process.json \
+  --spec /home/runner/work/Bewerbo/Bewerbo/workflows/v1/bewerbo_application_process.json \
   --state state/runs.json \
   metrics
 ```
+
+## Output structure
+
+`final_output` includes:
+- `master_profile`
+- `rejection_analysis` (KO risks + mitigation)
+- `scored_jobs`
+- `classified_jobs` (`apply`/`optional`/`skip`)
+- `decision_summary`
+- `application_packages` (5 quality variants per selected job)
+- `quality_report`
 
 ## Security and reliability notes
 
