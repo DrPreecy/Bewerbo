@@ -15,20 +15,24 @@ class RetryableStepError(RuntimeError):
 class IntegrationClient(ABC):
     @abstractmethod
     def call(self, target: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """call."""
         raise NotImplementedError
 
 
 class MockIntegrationClient(IntegrationClient):
     def call(self, target: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """call."""
         return {"target": target, "status": "ok", "echo": payload}
 
 
 class StepExecutor(ABC):
     @abstractmethod
     def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """execute."""
         raise NotImplementedError
 
     def compensate(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """compensate."""
         return {"compensated": False}
 
 
@@ -36,6 +40,7 @@ class SanitizeInputExecutor(StepExecutor):
     _dangerous_chars = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F]")
 
     def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """execute."""
         fields = step_params.get("fields", [])
         for field in fields:
             if isinstance(context.get(field), str):
@@ -45,6 +50,7 @@ class SanitizeInputExecutor(StepExecutor):
 
 class TransformExecutor(StepExecutor):
     def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """execute."""
         mappings = step_params.get("mappings", {})
         for target, source in mappings.items():
             context[target] = context.get(source)
@@ -53,9 +59,11 @@ class TransformExecutor(StepExecutor):
 
 class ExternalCallExecutor(StepExecutor):
     def __init__(self, integration_client: IntegrationClient):
+        """  init  ."""
         self.integration_client = integration_client
 
     def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """execute."""
         payload = {field: context.get(field) for field in step_params.get("payload_fields", [])}
         response = self.integration_client.call(step_params.get("target", "mock://integration"), payload)
         context["integration_status"], context["integration_response"] = response.get("status"), response
@@ -64,6 +72,7 @@ class ExternalCallExecutor(StepExecutor):
 
 class EmitOutputExecutor(StepExecutor):
     def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """execute."""
         output = {field: context.get(field) for field in step_params.get("fields", [])}
         context["final_output"] = output
         return output
@@ -71,6 +80,7 @@ class EmitOutputExecutor(StepExecutor):
 
 class FailNTimesExecutor(StepExecutor):
     def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """execute."""
         key = f"_attempt_{step_params.get('key', 'default')}"
         current, required = int(context.get(key, 0)), int(step_params.get("failures", 1))
         if current < required:
@@ -81,6 +91,7 @@ class FailNTimesExecutor(StepExecutor):
 
 class BuildProfileExecutor(StepExecutor):
     def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """execute."""
         profile = build_master_profile(context)
         context["master_profile"] = profile
         return {"master_profile_created": True, "target_roles": profile.get("target_roles", [])}
@@ -88,6 +99,7 @@ class BuildProfileExecutor(StepExecutor):
 
 class RejectionLearningExecutor(StepExecutor):
     def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """execute."""
         analysis = analyze_rejection(context, context)
         context["rejection_analysis"] = analysis
         return analysis
@@ -95,6 +107,7 @@ class RejectionLearningExecutor(StepExecutor):
 
 class JobScoringExecutor(StepExecutor):
     def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """execute."""
         scored = [score_job(job, context.get("master_profile", {})) for job in context.get("job_market_data", [])]
         scored.sort(key=lambda job: job.get("match_score", 0), reverse=True)
         context["scored_jobs"] = scored
@@ -103,6 +116,7 @@ class JobScoringExecutor(StepExecutor):
 
 class JobDecisionExecutor(StepExecutor):
     def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """execute."""
         thresholds = DecisionThresholds(float(step_params.get("apply_min", 0.72)), float(step_params.get("optional_min", 0.52)))
         classified = classify_jobs(context.get("scored_jobs", []), thresholds)
         context["classified_jobs"] = classified
@@ -115,6 +129,7 @@ class JobDecisionExecutor(StepExecutor):
 
 class GenerateDocumentsExecutor(StepExecutor):
     def _resolve_template_path(self, value: str) -> Path:
+        """ resolve template path."""
         path = Path(value)
         if path.is_absolute():
             return path
@@ -125,6 +140,7 @@ class GenerateDocumentsExecutor(StepExecutor):
         raise FileNotFoundError(f"Template path could not be resolved: {value}")
 
     def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """execute."""
         templates = {
             "cv_master": self._resolve_template_path(step_params["cv_template_path"]).read_text(encoding="utf-8"),
             "cover_letter_master": self._resolve_template_path(step_params["cover_letter_template_path"]).read_text(encoding="utf-8"),
@@ -137,6 +153,7 @@ class GenerateDocumentsExecutor(StepExecutor):
 
 class QualityGateExecutor(StepExecutor):
     def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """execute."""
         report = quality_checks(context.get("application_packages", []))
         context["quality_report"] = report
         return {"all_passed": report.get("all_passed", False), "checks": len(report.get("checks", []))}
@@ -144,6 +161,7 @@ class QualityGateExecutor(StepExecutor):
 
 class ExecutorRegistry:
     def __init__(self, integration_client: IntegrationClient | None = None):
+        """  init  ."""
         client = integration_client or MockIntegrationClient()
         self._executors = {
             "sanitize_input": SanitizeInputExecutor(), "transform": TransformExecutor(),
@@ -155,6 +173,7 @@ class ExecutorRegistry:
         }
 
     def get(self, step_type: str) -> StepExecutor:
+        """get."""
         if step_type not in self._executors:
             raise KeyError(f"Unknown step executor type: {step_type}")
         return self._executors[step_type]
