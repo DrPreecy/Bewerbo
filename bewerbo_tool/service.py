@@ -21,7 +21,7 @@ class WorkflowService:
         run = self.engine.create_run(spec, input_data, idempotency_key=idempotency_key)
 
         if run.status.value in {"running", "pending"}:
-            self._submit(spec, run.run_id, resume=True)
+            self._submit(spec, run.run_id, resume=False)
         return run
 
     def _submit(self, spec: WorkflowSpec, run_id: str, resume: bool) -> None:

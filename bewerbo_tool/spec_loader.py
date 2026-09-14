@@ -34,13 +34,21 @@ def parse_workflow_spec(payload: Dict[str, Any]) -> WorkflowSpec:
         if step_id in step_ids:
             raise SpecValidationError(f"Duplicate step id: {step_id}")
         step_ids.add(step_id)
+        try:
+            retries = int(raw_step.get("retries", 0))
+        except (TypeError, ValueError) as err:
+            raise SpecValidationError(f"Invalid retries value for step '{step_id}'") from err
+        try:
+            backoff_seconds = float(raw_step.get("backoff_seconds", 0.0))
+        except (TypeError, ValueError) as err:
+            raise SpecValidationError(f"Invalid backoff_seconds value for step '{step_id}'") from err
         steps.append(
             WorkflowStep(
                 id=step_id,
                 type=str(raw_step["type"]),
                 params=dict(raw_step.get("params", {})),
-                retries=int(raw_step.get("retries", 0)),
-                backoff_seconds=float(raw_step.get("backoff_seconds", 0.0)),
+                retries=retries,
+                backoff_seconds=backoff_seconds,
                 continue_on_error=bool(raw_step.get("continue_on_error", False)),
                 compensation=raw_step.get("compensation"),
             )

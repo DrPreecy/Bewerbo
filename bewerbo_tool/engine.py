@@ -225,14 +225,17 @@ class WorkflowEngine:
         )
 
     def _redact_sensitive(self, details: Dict) -> Dict:
-        redacted = {}
-        for key, value in details.items():
-            lowered = key.lower()
-            if any(token in lowered for token in ("secret", "token", "password", "key")):
-                redacted[key] = "***REDACTED***"
-            else:
-                redacted[key] = value
-        return redacted
+        return {key: self._redact_value(key, value) for key, value in details.items()}
+
+    def _redact_value(self, key: str, value):
+        lowered = key.lower()
+        if any(token in lowered for token in ("secret", "token", "password", "key")):
+            return "***REDACTED***"
+        if isinstance(value, dict):
+            return {k: self._redact_value(k, v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self._redact_value(key, item) for item in value]
+        return value
 
     def _preserve_requested_action(self, run: RunRecord) -> None:
         if run.requested_action:

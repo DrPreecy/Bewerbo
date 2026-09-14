@@ -22,6 +22,18 @@ class TestSpecLoader(unittest.TestCase):
         with self.assertRaises(SpecValidationError):
             validate_input(schema, {})
 
+    def test_parse_spec_rejects_non_numeric_retry_backoff(self):
+        payload = {
+            "name": "a",
+            "version": "1",
+            "input_schema": {"required": ["id"]},
+            "steps": [
+                {"id": "x", "type": "transform", "retries": "not-a-number"},
+            ],
+        }
+        with self.assertRaises(SpecValidationError):
+            parse_workflow_spec(payload)
+
 
 if __name__ == "__main__":
     unittest.main()
