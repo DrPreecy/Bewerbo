@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any, Dict
 
@@ -28,32 +29,41 @@ def parse_workflow_spec(payload: Dict[str, Any]) -> WorkflowSpec:
     steps = []
     step_ids = set()
     for raw_step in payload["steps"]:
-        if "id" not in raw_step or "type" not in raw_step:
+        if not isinstance(raw_step, dict) or "id" not in raw_step or "type" not in raw_step:
             raise SpecValidationError("Each step requires 'id' and 'type'")
         step_id = str(raw_step["id"])
         if step_id in step_ids:
             raise SpecValidationError(f"Duplicate step id: {step_id}")
         step_ids.add(step_id)
-        try:
-            retries = int(raw_step.get("retries", 0))
-        except (TypeError, ValueError) as err:
-            raise SpecValidationError(f"Invalid retries value for step '{step_id}'") from err
+
+        retries = raw_step.get("retries", 0)
+        if isinstance(retries, bool) or not isinstance(retries, int):
+            raise SpecValidationError(f"Invalid retries value for step '{step_id}'")
         if retries < 0:
             raise SpecValidationError(f"Invalid retries value for step '{step_id}': must be >= 0")
-        try:
-            backoff_seconds = float(raw_step.get("backoff_seconds", 0.0))
-        except (TypeError, ValueError) as err:
-            raise SpecValidationError(f"Invalid backoff_seconds value for step '{step_id}'") from err
+
+        backoff_seconds = raw_step.get("backoff_seconds", 0.0)
+        if (
+            isinstance(backoff_seconds, bool)
+            or not isinstance(backoff_seconds, (int, float))
+            or not math.isfinite(backoff_seconds)
+        ):
+            raise SpecValidationError(f"Invalid backoff_seconds value for step '{step_id}'")
         if backoff_seconds < 0:
             raise SpecValidationError(f"Invalid backoff_seconds value for step '{step_id}': must be >= 0")
+
+        continue_on_error = raw_step.get("continue_on_error", False)
+        if not isinstance(continue_on_error, bool):
+            raise SpecValidationError(f"Invalid continue_on_error value for step '{step_id}'")
+
         steps.append(
             WorkflowStep(
                 id=step_id,
                 type=str(raw_step["type"]),
                 params=dict(raw_step.get("params", {})),
                 retries=retries,
-                backoff_seconds=backoff_seconds,
-                continue_on_error=bool(raw_step.get("continue_on_error", False)),
+                backoff_seconds=float(backoff_seconds),
+                continue_on_error=continue_on_error,
                 compensation=raw_step.get("compensation"),
             )
         )
