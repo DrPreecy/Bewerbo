@@ -15,23 +15,14 @@ class WorkflowEngine:
         self.store = store
         self.registry = registry
 
-    def create_run(
-        self,
-        spec: WorkflowSpec,
-        input_data: Dict,
-        idempotency_key: str | None = None,
-    ) -> RunRecord:
+    def create_run(self, spec: WorkflowSpec, input_data: Dict, idempotency_key: str | None = None) -> RunRecord:
         run, _ = self.create_run_with_flag(spec, input_data, idempotency_key=idempotency_key)
         return run
 
     def create_run_with_flag(
-        self,
-        spec: WorkflowSpec,
-        input_data: Dict,
-        idempotency_key: str | None = None,
+        self, spec: WorkflowSpec, input_data: Dict, idempotency_key: str | None = None
     ) -> tuple[RunRecord, bool]:
         validate_input(spec.input_schema, input_data)
-
         run = RunRecord(
             run_id=str(uuid.uuid4()),
             workflow_name=spec.name,
@@ -54,8 +45,9 @@ class WorkflowEngine:
 
     def resume_run(self, run_id: str) -> RunRecord:
         run = self._require_run(run_id)
-        if run.status == RunStatus.PAUSED:
-            run.status = RunStatus.PENDING
+        if run.status != RunStatus.PAUSED:
+            raise ValueError("Only paused runs can be resumed; rerun failed runs from their failed step")
+        run.status = RunStatus.PENDING
         run.requested_action = None
         run.updated_at = utc_now_iso()
         self._audit(run, "run_resumed", "Run marked runnable")
@@ -64,9 +56,10 @@ class WorkflowEngine:
 
     def execute(self, spec: WorkflowSpec, run_id: str, resume: bool = False) -> RunRecord:
         run = self._require_run(run_id)
-
         if run.status in {RunStatus.COMPLETED, RunStatus.CANCELLED}:
             return run
+        if run.requested_action:
+            return self._apply_requested_action(run, run.current_step_index)
 
         if not resume:
             run.current_step_index = 0
@@ -74,32 +67,17 @@ class WorkflowEngine:
             run.context = dict(run.input_data)
 
         run.status = RunStatus.RUNNING
-        run.requested_action = None
         run.updated_at = utc_now_iso()
         self._audit(run, "run_started", "Run execution started", {"resume": resume})
-        self.store.save_run(run)
+        self.store.save_run_preserving_requested_action(run)
 
         completed_step_ids: List[str] = [
             step_id for step_id, result in run.step_results.items() if result.status == StepStatus.COMPLETED
         ]
-
         for i in range(run.current_step_index, len(spec.steps)):
             run = self._require_run(run.run_id)
-            if run.requested_action == "cancel":
-                run.status = RunStatus.CANCELLED
-                run.requested_action = None
-                run.updated_at = utc_now_iso()
-                self._audit(run, "run_cancelled", "Run cancelled")
-                self.store.save_run(run)
-                return run
-            if run.requested_action == "pause":
-                run.status = RunStatus.PAUSED
-                run.requested_action = None
-                run.current_step_index = i
-                run.updated_at = utc_now_iso()
-                self._audit(run, "run_paused", "Run paused", {"step_index": i})
-                self.store.save_run(run)
-                return run
+            if run.requested_action:
+                return self._apply_requested_action(run, i)
 
             step = spec.steps[i]
             pre_context = dict(run.context)
@@ -109,7 +87,7 @@ class WorkflowEngine:
             output = {}
             error_message = None
 
-            while attempts <= max(step.retries, 0):
+            while attempts <= step.retries:
                 attempts += 1
                 try:
                     executor = self.registry.get(step.type)
@@ -145,33 +123,28 @@ class WorkflowEngine:
             if step_status == StepStatus.COMPLETED:
                 completed_step_ids.append(step.id)
                 self._audit(run, "step_completed", "Step completed", {"step_id": step.id, "attempts": attempts})
-                self._preserve_requested_action(run)
-                self.store.save_run(run)
+                self.store.save_run_preserving_requested_action(run)
                 continue
 
             run.last_error = error_message
             self._audit(run, "step_failed", "Step failed", {"step_id": step.id, "error": error_message})
-
             if step.continue_on_error:
                 result.status = StepStatus.SKIPPED
                 run.step_results[step.id] = result
                 run.last_error = None
                 self._audit(run, "step_skipped", "Continuing after failed step", {"step_id": step.id})
-                self._preserve_requested_action(run)
-                self.store.save_run(run)
+                self.store.save_run_preserving_requested_action(run)
                 continue
 
             self._compensate(spec, run, completed_step_ids)
             run.status = RunStatus.FAILED
-            self._preserve_requested_action(run)
-            self.store.save_run(run)
+            self.store.save_run_preserving_requested_action(run)
             return run
 
         run.status = RunStatus.COMPLETED
         run.updated_at = utc_now_iso()
         self._audit(run, "run_completed", "Run completed")
-        self._preserve_requested_action(run)
-        self.store.save_run(run)
+        self.store.save_run_preserving_requested_action(run)
         return run
 
     def rerun_failed_step(self, spec: WorkflowSpec, run_id: str) -> RunRecord:
@@ -183,23 +156,24 @@ class WorkflowEngine:
         if run.status != RunStatus.FAILED:
             raise ValueError("Run is not in failed status")
 
-        failed_index = None
-        for idx, step in enumerate(spec.steps):
-            result = run.step_results.get(step.id)
-            if result and result.status == StepStatus.FAILED:
-                failed_index = idx
-                break
-
+        failed_index = next(
+            (
+                idx
+                for idx, step in enumerate(spec.steps)
+                if (result := run.step_results.get(step.id)) and result.status == StepStatus.FAILED
+            ),
+            None,
+        )
         if failed_index is None:
             raise ValueError("No failed step found")
 
         failed_step_id = spec.steps[failed_index].id
         failed_result = run.step_results.get(failed_step_id)
-        if failed_result and failed_result.pre_context_snapshot:
-            run.context = dict(failed_result.pre_context_snapshot)
-        else:
-            run.context = self._context_at_step_boundary(spec, run, failed_index)
-
+        run.context = (
+            dict(failed_result.pre_context_snapshot)
+            if failed_result and failed_result.pre_context_snapshot
+            else self._context_at_step_boundary(spec, run, failed_index)
+        )
         for step in spec.steps[failed_index:]:
             run.step_results.pop(step.id, None)
 
@@ -213,14 +187,7 @@ class WorkflowEngine:
 
     def metrics(self) -> Dict[str, int]:
         runs = self.store.list_runs().values()
-        totals = {
-            "total_runs": 0,
-            "running": 0,
-            "paused": 0,
-            "completed": 0,
-            "failed": 0,
-            "cancelled": 0,
-        }
+        totals = {"total_runs": 0, "running": 0, "paused": 0, "completed": 0, "failed": 0, "cancelled": 0}
         for run in runs:
             totals["total_runs"] += 1
             if run.status == RunStatus.RUNNING:
@@ -234,6 +201,21 @@ class WorkflowEngine:
             elif run.status == RunStatus.CANCELLED:
                 totals["cancelled"] += 1
         return totals
+
+    def _apply_requested_action(self, run: RunRecord, step_index: int) -> RunRecord:
+        if run.requested_action == "cancel":
+            run.status = RunStatus.CANCELLED
+            self._audit(run, "run_cancelled", "Run cancelled")
+        elif run.requested_action == "pause":
+            run.status = RunStatus.PAUSED
+            run.current_step_index = step_index
+            self._audit(run, "run_paused", "Run paused", {"step_index": step_index})
+        else:
+            return run
+        run.requested_action = None
+        run.updated_at = utc_now_iso()
+        self.store.save_run(run)
+        return run
 
     def _compensate(self, spec: WorkflowSpec, run: RunRecord, completed_step_ids: List[str]) -> None:
         for step in reversed(spec.steps):
@@ -253,32 +235,16 @@ class WorkflowEngine:
         return run
 
     def _audit(self, run: RunRecord, event_type: str, message: str, details: Dict | None = None) -> None:
-        safe_details = self._redact_sensitive(details or {})
         run.audit_log.append(
-            AuditEvent(
-                timestamp=utc_now_iso(),
-                event_type=event_type,
-                message=message,
-                details=safe_details,
-            )
+            AuditEvent(timestamp=utc_now_iso(), event_type=event_type, message=message, details=self._redact_sensitive(details or {}))
         )
 
     def _redact_sensitive(self, details: Dict) -> Dict:
         return {key: self._redact_value(key, value) for key, value in details.items()}
 
     def _redact_value(self, key: str, value):
-        lowered = key.lower()
-        sensitive_tokens = (
-            "secret",
-            "token",
-            "password",
-            "api_key",
-            "private_key",
-            "access_key",
-            "client_secret",
-            "authorization",
-        )
-        if any(token in lowered for token in sensitive_tokens):
+        sensitive_tokens = ("secret", "token", "password", "api_key", "private_key", "access_key", "client_secret", "authorization")
+        if any(token in key.lower() for token in sensitive_tokens):
             return "***REDACTED***"
         if isinstance(value, dict):
             return {k: self._redact_value(k, v) for k, v in value.items()}
@@ -289,15 +255,7 @@ class WorkflowEngine:
     def _context_at_step_boundary(self, spec: WorkflowSpec, run: RunRecord, step_index: int) -> Dict:
         if step_index <= 0:
             return dict(run.input_data)
-        previous_step_id = spec.steps[step_index - 1].id
-        previous_result = run.step_results.get(previous_step_id)
-        if previous_result and previous_result.status == StepStatus.COMPLETED:
-            return dict(previous_result.context_snapshot or run.input_data)
+        previous = run.step_results.get(spec.steps[step_index - 1].id)
+        if previous and previous.status == StepStatus.COMPLETED:
+            return dict(previous.context_snapshot or run.input_data)
         return dict(run.input_data)
-
-    def _preserve_requested_action(self, run: RunRecord) -> None:
-        if run.requested_action:
-            return
-        latest = self.store.get_run(run.run_id)
-        if latest and latest.requested_action:
-            run.requested_action = latest.requested_action
