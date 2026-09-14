@@ -5,15 +5,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict
 
-from .bewerbo_logic import (
-    DecisionThresholds,
-    analyze_rejection,
-    build_master_profile,
-    build_variants_for_job,
-    classify_jobs,
-    quality_checks,
-    score_job,
-)
+from .bewerbo_logic import DecisionThresholds, analyze_rejection, build_master_profile, build_variants_for_job, classify_jobs, quality_checks, score_job
 
 
 class RetryableStepError(RuntimeError):
@@ -28,11 +20,7 @@ class IntegrationClient(ABC):
 
 class MockIntegrationClient(IntegrationClient):
     def call(self, target: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        return {
-            "target": target,
-            "status": "ok",
-            "echo": payload,
-        }
+        return {"target": target, "status": "ok", "echo": payload}
 
 
 class StepExecutor(ABC):
@@ -50,9 +38,8 @@ class SanitizeInputExecutor(StepExecutor):
     def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         fields = step_params.get("fields", [])
         for field in fields:
-            value = context.get(field)
-            if isinstance(value, str):
-                context[field] = self._dangerous_chars.sub("", value).strip()
+            if isinstance(context.get(field), str):
+                context[field] = self._dangerous_chars.sub("", context[field]).strip()
         return {"sanitized_fields": fields}
 
 
@@ -69,19 +56,15 @@ class ExternalCallExecutor(StepExecutor):
         self.integration_client = integration_client
 
     def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        target = step_params.get("target", "mock://integration")
-        payload_fields = step_params.get("payload_fields", [])
-        payload = {f: context.get(f) for f in payload_fields}
-        response = self.integration_client.call(target, payload)
-        context["integration_status"] = response.get("status")
-        context["integration_response"] = response
+        payload = {field: context.get(field) for field in step_params.get("payload_fields", [])}
+        response = self.integration_client.call(step_params.get("target", "mock://integration"), payload)
+        context["integration_status"], context["integration_response"] = response.get("status"), response
         return {"integration_status": response.get("status")}
 
 
 class EmitOutputExecutor(StepExecutor):
     def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        fields = step_params.get("fields", [])
-        output = {f: context.get(f) for f in fields}
+        output = {field: context.get(field) for field in step_params.get("fields", [])}
         context["final_output"] = output
         return output
 
@@ -89,9 +72,8 @@ class EmitOutputExecutor(StepExecutor):
 class FailNTimesExecutor(StepExecutor):
     def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         key = f"_attempt_{step_params.get('key', 'default')}"
-        required_failures = int(step_params.get("failures", 1))
-        current = int(context.get(key, 0))
-        if current < required_failures:
+        current, required = int(context.get(key, 0)), int(step_params.get("failures", 1))
+        if current < required:
             context[key] = current + 1
             raise RetryableStepError("Transient failure; retry allowed")
         return {"recovered_after": current}
@@ -113,9 +95,7 @@ class RejectionLearningExecutor(StepExecutor):
 
 class JobScoringExecutor(StepExecutor):
     def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        jobs = context.get("job_market_data", [])
-        profile = context.get("master_profile", {})
-        scored = [score_job(job, profile) for job in jobs]
+        scored = [score_job(job, context.get("master_profile", {})) for job in context.get("job_market_data", [])]
         scored.sort(key=lambda job: job.get("match_score", 0), reverse=True)
         context["scored_jobs"] = scored
         return {"jobs_scored": len(scored)}
@@ -123,10 +103,7 @@ class JobScoringExecutor(StepExecutor):
 
 class JobDecisionExecutor(StepExecutor):
     def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        thresholds = DecisionThresholds(
-            apply_min=float(step_params.get("apply_min", 0.72)),
-            optional_min=float(step_params.get("optional_min", 0.52)),
-        )
+        thresholds = DecisionThresholds(float(step_params.get("apply_min", 0.72)), float(step_params.get("optional_min", 0.52)))
         classified = classify_jobs(context.get("scored_jobs", []), thresholds)
         context["classified_jobs"] = classified
         summary = {"apply": 0, "optional": 0, "skip": 0}
@@ -137,14 +114,23 @@ class JobDecisionExecutor(StepExecutor):
 
 
 class GenerateDocumentsExecutor(StepExecutor):
-    def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        template_cv = Path(step_params["cv_template_path"]).read_text(encoding="utf-8")
-        template_letter = Path(step_params["cover_letter_template_path"]).read_text(encoding="utf-8")
-        templates = {"cv_master": template_cv, "cover_letter_master": template_letter}
+    def _resolve_template_path(self, value: str) -> Path:
+        path = Path(value)
+        if path.is_absolute():
+            return path
+        for root in (Path.cwd(), *Path.cwd().parents):
+            candidate = root / path
+            if candidate.is_file():
+                return candidate
+        raise FileNotFoundError(f"Template path could not be resolved: {value}")
 
-        profile = context.get("master_profile", {})
-        selected = [j for j in context.get("classified_jobs", []) if j.get("decision") in {"apply", "optional"}]
-        applications = [build_variants_for_job(job, profile, templates) for job in selected]
+    def execute(self, step_params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        templates = {
+            "cv_master": self._resolve_template_path(step_params["cv_template_path"]).read_text(encoding="utf-8"),
+            "cover_letter_master": self._resolve_template_path(step_params["cover_letter_template_path"]).read_text(encoding="utf-8"),
+        }
+        selected = [job for job in context.get("classified_jobs", []) if job.get("decision") in {"apply", "optional"}]
+        applications = [build_variants_for_job(job, context.get("master_profile", {}), templates) for job in selected]
         context["application_packages"] = applications
         return {"application_packages": len(applications)}
 
@@ -158,18 +144,13 @@ class QualityGateExecutor(StepExecutor):
 
 class ExecutorRegistry:
     def __init__(self, integration_client: IntegrationClient | None = None):
-        ic = integration_client or MockIntegrationClient()
+        client = integration_client or MockIntegrationClient()
         self._executors = {
-            "sanitize_input": SanitizeInputExecutor(),
-            "transform": TransformExecutor(),
-            "external_call": ExternalCallExecutor(ic),
-            "emit_output": EmitOutputExecutor(),
-            "fail_n_times": FailNTimesExecutor(),
-            "build_profile": BuildProfileExecutor(),
-            "rejection_learning": RejectionLearningExecutor(),
-            "score_jobs": JobScoringExecutor(),
-            "decide_jobs": JobDecisionExecutor(),
-            "generate_documents": GenerateDocumentsExecutor(),
+            "sanitize_input": SanitizeInputExecutor(), "transform": TransformExecutor(),
+            "external_call": ExternalCallExecutor(client), "emit_output": EmitOutputExecutor(),
+            "fail_n_times": FailNTimesExecutor(), "build_profile": BuildProfileExecutor(),
+            "rejection_learning": RejectionLearningExecutor(), "score_jobs": JobScoringExecutor(),
+            "decide_jobs": JobDecisionExecutor(), "generate_documents": GenerateDocumentsExecutor(),
             "quality_gate": QualityGateExecutor(),
         }
 
