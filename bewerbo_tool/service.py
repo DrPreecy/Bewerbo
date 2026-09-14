@@ -46,7 +46,7 @@ class WorkflowService:
         return self.engine.request_action(run_id, "cancel")
 
     def resume(self, spec: WorkflowSpec, run_id: str) -> RunRecord:
-        self.engine.request_action(run_id, "resume")
+        self.engine.resume_run(run_id)
         self._submit(spec, run_id, resume=True)
         run = self.engine.store.get_run(run_id)
         if not run:

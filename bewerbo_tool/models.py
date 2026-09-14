@@ -53,6 +53,7 @@ class StepResult:
     attempts: int
     started_at: str
     finished_at: str
+    pre_context_snapshot: Dict[str, Any] = field(default_factory=dict)
     output: Dict[str, Any] = field(default_factory=dict)
     context_snapshot: Dict[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
@@ -104,6 +105,7 @@ class RunRecord:
                     "attempts": v.attempts,
                     "started_at": v.started_at,
                     "finished_at": v.finished_at,
+                    "pre_context_snapshot": v.pre_context_snapshot,
                     "output": v.output,
                     "context_snapshot": v.context_snapshot,
                     "error": v.error,
@@ -143,6 +145,7 @@ class RunRecord:
                     attempts=v["attempts"],
                     started_at=v["started_at"],
                     finished_at=v["finished_at"],
+                    pre_context_snapshot=v.get("pre_context_snapshot", {}),
                     output=v.get("output", {}),
                     context_snapshot=v.get("context_snapshot", {}),
                     error=v.get("error"),

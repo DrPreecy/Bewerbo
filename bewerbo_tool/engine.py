@@ -52,6 +52,16 @@ class WorkflowEngine:
         self.store.save_run(run)
         return run
 
+    def resume_run(self, run_id: str) -> RunRecord:
+        run = self._require_run(run_id)
+        if run.status == RunStatus.PAUSED:
+            run.status = RunStatus.PENDING
+        run.requested_action = None
+        run.updated_at = utc_now_iso()
+        self._audit(run, "run_resumed", "Run marked runnable")
+        self.store.save_run(run)
+        return run
+
     def execute(self, spec: WorkflowSpec, run_id: str, resume: bool = False) -> RunRecord:
         run = self._require_run(run_id)
 
@@ -92,6 +102,7 @@ class WorkflowEngine:
                 return run
 
             step = spec.steps[i]
+            pre_context = dict(run.context)
             started = utc_now_iso()
             attempts = 0
             step_status = StepStatus.FAILED
@@ -122,6 +133,7 @@ class WorkflowEngine:
                 attempts=attempts,
                 started_at=started,
                 finished_at=utc_now_iso(),
+                pre_context_snapshot=pre_context,
                 output=output,
                 context_snapshot=dict(run.context),
                 error=error_message,
@@ -181,9 +193,15 @@ class WorkflowEngine:
         if failed_index is None:
             raise ValueError("No failed step found")
 
+        failed_step_id = spec.steps[failed_index].id
+        failed_result = run.step_results.get(failed_step_id)
+        if failed_result and failed_result.pre_context_snapshot:
+            run.context = dict(failed_result.pre_context_snapshot)
+        else:
+            run.context = self._context_at_step_boundary(spec, run, failed_index)
+
         for step in spec.steps[failed_index:]:
             run.step_results.pop(step.id, None)
-        run.context = self._context_at_step_boundary(spec, run, failed_index)
 
         run.current_step_index = failed_index
         run.status = RunStatus.PENDING
@@ -260,7 +278,7 @@ class WorkflowEngine:
             "client_secret",
             "authorization",
         )
-        if lowered in sensitive_tokens or any(token in lowered for token in ("secret", "token", "password")):
+        if any(token in lowered for token in sensitive_tokens):
             return "***REDACTED***"
         if isinstance(value, dict):
             return {k: self._redact_value(k, v) for k, v in value.items()}
