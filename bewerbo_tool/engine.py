@@ -12,16 +12,19 @@ from .storage import JsonStateStore
 
 class WorkflowEngine:
     def __init__(self, store: JsonStateStore, registry: ExecutorRegistry):
+        """  init  ."""
         self.store = store
         self.registry = registry
 
     def create_run(self, spec: WorkflowSpec, input_data: Dict, idempotency_key: str | None = None) -> RunRecord:
+        """create run."""
         run, _ = self.create_run_with_flag(spec, input_data, idempotency_key=idempotency_key)
         return run
 
     def create_run_with_flag(
         self, spec: WorkflowSpec, input_data: Dict, idempotency_key: str | None = None
     ) -> tuple[RunRecord, bool]:
+        """create run with flag."""
         validate_input(spec.input_schema, input_data)
         run = RunRecord(
             run_id=str(uuid.uuid4()),
@@ -36,6 +39,7 @@ class WorkflowEngine:
         return self.store.save_run_if_idempotency_absent(run)
 
     def request_action(self, run_id: str, action: str) -> RunRecord:
+        """request action."""
         run = self._require_run(run_id)
         run.requested_action = action
         run.updated_at = utc_now_iso()
@@ -44,6 +48,7 @@ class WorkflowEngine:
         return run
 
     def resume_run(self, run_id: str) -> RunRecord:
+        """resume run."""
         run = self._require_run(run_id)
         if run.status != RunStatus.PAUSED:
             raise ValueError("Only paused runs can be resumed; rerun failed runs from their failed step")
@@ -55,6 +60,7 @@ class WorkflowEngine:
         return run
 
     def execute(self, spec: WorkflowSpec, run_id: str, resume: bool = False) -> RunRecord:
+        """execute."""
         run = self._require_run(run_id)
         if run.status in {RunStatus.COMPLETED, RunStatus.CANCELLED}:
             return run
@@ -148,10 +154,12 @@ class WorkflowEngine:
         return run
 
     def rerun_failed_step(self, spec: WorkflowSpec, run_id: str) -> RunRecord:
+        """rerun failed step."""
         run = self.prepare_rerun_failed_step(spec, run_id)
         return self.execute(spec, run.run_id, resume=True)
 
     def prepare_rerun_failed_step(self, spec: WorkflowSpec, run_id: str) -> RunRecord:
+        """prepare rerun failed step."""
         run = self._require_run(run_id)
         if run.status != RunStatus.FAILED:
             raise ValueError("Run is not in failed status")
@@ -186,6 +194,7 @@ class WorkflowEngine:
         return run
 
     def metrics(self) -> Dict[str, int]:
+        """metrics."""
         runs = self.store.list_runs().values()
         totals = {"total_runs": 0, "running": 0, "paused": 0, "completed": 0, "failed": 0, "cancelled": 0}
         for run in runs:
@@ -203,6 +212,7 @@ class WorkflowEngine:
         return totals
 
     def _apply_requested_action(self, run: RunRecord, step_index: int) -> RunRecord:
+        """ apply requested action."""
         if run.requested_action == "cancel":
             run.status = RunStatus.CANCELLED
             self._audit(run, "run_cancelled", "Run cancelled")
@@ -218,6 +228,7 @@ class WorkflowEngine:
         return run
 
     def _compensate(self, spec: WorkflowSpec, run: RunRecord, completed_step_ids: List[str]) -> None:
+        """ compensate."""
         for step in reversed(spec.steps):
             if step.id not in completed_step_ids or not step.compensation:
                 continue
@@ -229,20 +240,24 @@ class WorkflowEngine:
                 self._audit(run, "compensation_failed", "Compensation failed", {"step_id": step.id, "error": str(err)})
 
     def _require_run(self, run_id: str) -> RunRecord:
+        """ require run."""
         run = self.store.get_run(run_id)
         if not run:
             raise KeyError(f"Run not found: {run_id}")
         return run
 
     def _audit(self, run: RunRecord, event_type: str, message: str, details: Dict | None = None) -> None:
+        """ audit."""
         run.audit_log.append(
             AuditEvent(timestamp=utc_now_iso(), event_type=event_type, message=message, details=self._redact_sensitive(details or {}))
         )
 
     def _redact_sensitive(self, details: Dict) -> Dict:
+        """ redact sensitive."""
         return {key: self._redact_value(key, value) for key, value in details.items()}
 
     def _redact_value(self, key: str, value):
+        """ redact value."""
         sensitive_tokens = ("secret", "token", "password", "api_key", "private_key", "access_key", "client_secret", "authorization")
         if any(token in key.lower() for token in sensitive_tokens):
             return "***REDACTED***"
@@ -253,6 +268,7 @@ class WorkflowEngine:
         return value
 
     def _context_at_step_boundary(self, spec: WorkflowSpec, run: RunRecord, step_index: int) -> Dict:
+        """ context at step boundary."""
         if step_index <= 0:
             return dict(run.input_data)
         previous = run.step_results.get(spec.steps[step_index - 1].id)
