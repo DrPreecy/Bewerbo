@@ -18,6 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 class TestEngine(unittest.TestCase):
     def _engine_and_spec(self, base: Path):
+        """ engine and spec."""
         state = base / "state.json"
         store = JsonStateStore(str(state))
         engine = WorkflowEngine(store=store, registry=ExecutorRegistry())
@@ -25,6 +26,7 @@ class TestEngine(unittest.TestCase):
         return engine, spec
 
     def test_end_to_end_workflow_completes(self):
+        """test end to end workflow completes."""
         with tempfile.TemporaryDirectory() as td:
             engine, spec = self._engine_and_spec(Path(td))
             run = engine.create_run(spec, {"item_id": "1", "payload": " hello "}, idempotency_key="k1")
@@ -35,6 +37,7 @@ class TestEngine(unittest.TestCase):
             self.assertEqual(completed.context["final_output"]["item_id"], "1")
 
     def test_idempotency_returns_same_run(self):
+        """test idempotency returns same run."""
         with tempfile.TemporaryDirectory() as td:
             engine, spec = self._engine_and_spec(Path(td))
             run1 = engine.create_run(spec, {"item_id": "1", "payload": "x"}, idempotency_key="same")
@@ -42,6 +45,7 @@ class TestEngine(unittest.TestCase):
             self.assertEqual(run1.run_id, run2.run_id)
 
     def test_retryable_step_succeeds_after_retries(self):
+        """test retryable step succeeds after retries."""
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
             spec_path = base / "retry_spec.json"
@@ -76,6 +80,7 @@ class TestEngine(unittest.TestCase):
             self.assertEqual(result.step_results["retrying"].attempts, 3)
 
     def test_metrics_include_completed_runs(self):
+        """test metrics include completed runs."""
         with tempfile.TemporaryDirectory() as td:
             engine, spec = self._engine_and_spec(Path(td))
             run = engine.create_run(spec, {"item_id": "1", "payload": "x"})
@@ -85,6 +90,7 @@ class TestEngine(unittest.TestCase):
             self.assertEqual(metrics["completed"], 1)
 
     def test_pause_request_pauses_before_next_step(self):
+        """test pause request pauses before next step."""
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
             spec_path = base / "pause_spec.json"
@@ -125,6 +131,7 @@ class TestEngine(unittest.TestCase):
             self.assertEqual(paused.status, RunStatus.PAUSED)
 
     def test_cancel_request_cancels_before_next_step(self):
+        """test cancel request cancels before next step."""
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
             spec_path = base / "cancel_spec.json"
@@ -165,6 +172,7 @@ class TestEngine(unittest.TestCase):
             self.assertEqual(cancelled.status, RunStatus.CANCELLED)
 
     def test_rerun_failed_step_recovers(self):
+        """test rerun failed step recovers."""
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
             spec_path = base / "rerun_spec.json"
@@ -200,6 +208,7 @@ class TestEngine(unittest.TestCase):
             self.assertEqual(recovered.status, RunStatus.COMPLETED)
 
     def test_service_deduplicates_concurrent_start_submissions(self):
+        """test service deduplicates concurrent start submissions."""
         with tempfile.TemporaryDirectory() as td:
             engine, spec = self._engine_and_spec(Path(td))
             service = WorkflowService(engine=engine, max_concurrent_runs=2)
@@ -209,6 +218,7 @@ class TestEngine(unittest.TestCase):
             call_count = {"n": 0}
 
             def counted_execute(spec_arg, run_id_arg, resume=False):
+                """counted execute."""
                 with counter_lock:
                     call_count["n"] += 1
                 time.sleep(0.05)
@@ -220,6 +230,7 @@ class TestEngine(unittest.TestCase):
             run_ids = []
 
             def worker():
+                """worker."""
                 barrier.wait()
                 run = service.start(
                     spec,
@@ -241,6 +252,7 @@ class TestEngine(unittest.TestCase):
             self.assertEqual(call_count["n"], 1)
 
     def test_service_rerun_failed_step_uses_async_submission(self):
+        """test service rerun failed step uses async submission."""
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
             spec_path = base / "rerun_service_spec.json"
@@ -283,6 +295,7 @@ class TestEngine(unittest.TestCase):
             self.assertEqual(completed.status, RunStatus.COMPLETED)
 
     def test_service_sequential_idempotent_start_does_not_resubmit(self):
+        """test service sequential idempotent start does not resubmit."""
         with tempfile.TemporaryDirectory() as td:
             engine, spec = self._engine_and_spec(Path(td))
             service = WorkflowService(engine=engine, max_concurrent_runs=2)
@@ -292,6 +305,7 @@ class TestEngine(unittest.TestCase):
             call_count = {"n": 0}
 
             def counted_execute(spec_arg, run_id_arg, resume=False):
+                """counted execute."""
                 with counter_lock:
                     call_count["n"] += 1
                 time.sleep(0.05)
@@ -315,6 +329,7 @@ class TestEngine(unittest.TestCase):
             self.assertEqual(call_count["n"], 1)
 
     def test_continue_on_error_marks_step_skipped(self):
+        """test continue on error marks step skipped."""
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
             spec_path = base / "continue_spec.json"
