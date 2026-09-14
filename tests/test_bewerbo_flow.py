@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 class TestBewerboFlow(unittest.TestCase):
     def test_bewerbo_process_end_to_end(self):
+        """test bewerbo process end to end."""
         with tempfile.TemporaryDirectory() as td:
             state_path = Path(td) / "state.json"
             store = JsonStateStore(str(state_path))
@@ -37,6 +38,7 @@ class TestBewerboFlow(unittest.TestCase):
             self.assertGreaterEqual(len(output["application_packages"]), 1)
 
     def test_blocker_job_is_skipped(self):
+        """test blocker job is skipped."""
         with tempfile.TemporaryDirectory() as td:
             state_path = Path(td) / "state.json"
             store = JsonStateStore(str(state_path))
