@@ -1,0 +1,11 @@
+{{name}}
+E-Mail: {{email}}
+
+Profil
+Motivierter Kandidat für {{role}} mit Fokus auf duale Studiengänge und praxisnahe Entwicklung.
+
+Kernkompetenzen
+{{skills}}
+
+Stärken
+{{strengths}}

@@ -1,0 +1,53 @@
+{
+  "candidate_basics": {
+    "name": "Max Mustermann",
+    "email": "max@example.com"
+  },
+  "interview_answers": {
+    "skills": ["Python", "SQL", "Analysis", "Communication"],
+    "strengths": ["structured problem solving", "learning speed", "ownership"],
+    "location": "Germany",
+    "salary_expectation": "market",
+    "culture": "growth",
+    "study_focus": "duales Studium",
+    "no_gos": ["pure sales"],
+    "target_roles": ["Data & AI", "Risk"]
+  },
+  "rejection_feedback": "Absage bei DZ Bank, Grund unklar.",
+  "job_market_data": [
+    {
+      "id": "job-1",
+      "company": "TechBank",
+      "title": "Duales Studium Wirtschaftsinformatik",
+      "role_family": "Data & AI",
+      "required_skills": ["python", "sql"],
+      "preferred_skills": ["analysis"],
+      "learning_potential": "high",
+      "hard_filters": {"location": "Germany", "language": "DE/EN"}
+    },
+    {
+      "id": "job-2",
+      "company": "FinConsult",
+      "title": "Duales Studium Banking",
+      "role_family": "Banking",
+      "required_skills": ["finance"],
+      "preferred_skills": ["communication"],
+      "learning_potential": "medium",
+      "hard_filters": {"location": "Germany", "language": "German"}
+    },
+    {
+      "id": "job-3",
+      "company": "RemoteOps",
+      "title": "Duales Studium Data",
+      "role_family": "Data & AI",
+      "required_skills": ["python"],
+      "preferred_skills": ["sql"],
+      "learning_potential": "high",
+      "hard_filters": {"location": "Austria", "language": "English"}
+    }
+  ],
+  "existing_resources": {
+    "techniques": ["ATS keyword matching", "STAR storytelling"],
+    "repos": ["example/resume-tailor", "example/job-score"]
+  }
+}

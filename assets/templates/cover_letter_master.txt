@@ -1,0 +1,10 @@
+Bewerbung als {{role}} bei {{company}}
+
+Sehr geehrtes Recruiting-Team,
+
+ich bewerbe mich für {{role}}, weil ich meine Stärken in {{skills}} gezielt in einem praxisnahen Umfeld einsetzen und weiterentwickeln möchte.
+
+Besonders bringe ich {{strengths}} mit und kann damit schnell Mehrwert leisten.
+
+Mit freundlichen Grüßen
+{{name}}

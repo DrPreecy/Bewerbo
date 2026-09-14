@@ -1,0 +1,21 @@
+{
+  "name": "bewerbo_application_process",
+  "version": "1.0.0",
+  "input_schema": {"required": ["candidate_basics", "interview_answers", "job_market_data"]},
+  "steps": [
+    {"id": "sanitize_feedback", "type": "sanitize_input", "params": {"fields": ["rejection_feedback"]}},
+    {"id": "build_profile", "type": "build_profile"},
+    {"id": "learn_from_rejection", "type": "rejection_learning"},
+    {"id": "score_jobs", "type": "score_jobs"},
+    {"id": "decide_jobs", "type": "decide_jobs", "params": {"apply_min": 0.72, "optional_min": 0.52}},
+    {"id": "generate_docs", "type": "generate_documents", "params": {
+      "cv_template_path": "assets/templates/cv_master.txt",
+      "cover_letter_template_path": "assets/templates/cover_letter_master.txt"
+    }},
+    {"id": "quality_gate", "type": "quality_gate"},
+    {"id": "emit_output", "type": "emit_output", "params": {"fields": [
+      "master_profile", "rejection_analysis", "scored_jobs", "classified_jobs",
+      "decision_summary", "application_packages", "quality_report"
+    ]}}
+  ]
+}
