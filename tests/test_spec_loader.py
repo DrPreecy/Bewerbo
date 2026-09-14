@@ -5,6 +5,7 @@ from bewerbo_tool.spec_loader import SpecValidationError, parse_workflow_spec, v
 
 class TestSpecLoader(unittest.TestCase):
     def test_parse_spec_rejects_duplicate_step_ids(self):
+        """test parse spec rejects duplicate step ids."""
         payload = {
             "name": "a",
             "version": "1",
@@ -18,11 +19,13 @@ class TestSpecLoader(unittest.TestCase):
             parse_workflow_spec(payload)
 
     def test_validate_input_requires_fields(self):
+        """test validate input requires fields."""
         schema = {"required": ["item_id"]}
         with self.assertRaises(SpecValidationError):
             validate_input(schema, {})
 
     def test_parse_spec_rejects_non_numeric_retry_backoff(self):
+        """test parse spec rejects non numeric retry backoff."""
         invalid_retries_payload = {
             "name": "a",
             "version": "1",
@@ -46,6 +49,7 @@ class TestSpecLoader(unittest.TestCase):
             parse_workflow_spec(invalid_backoff_payload)
 
     def test_parse_spec_rejects_negative_retry_backoff(self):
+        """test parse spec rejects negative retry backoff."""
         negative_retries_payload = {
             "name": "a",
             "version": "1",
