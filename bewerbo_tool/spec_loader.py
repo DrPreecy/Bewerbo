@@ -13,11 +13,13 @@ class SpecValidationError(ValueError):
 
 
 def load_workflow_spec(spec_path: str) -> WorkflowSpec:
+    """load workflow spec."""
     payload = json.loads(Path(spec_path).read_text(encoding="utf-8"))
     return parse_workflow_spec(payload)
 
 
 def parse_workflow_spec(payload: Dict[str, Any]) -> WorkflowSpec:
+    """parse workflow spec."""
     required_top = ["name", "version", "input_schema", "steps"]
     missing = [k for k in required_top if k not in payload]
     if missing:
@@ -77,6 +79,7 @@ def parse_workflow_spec(payload: Dict[str, Any]) -> WorkflowSpec:
 
 
 def validate_input(input_schema: Dict[str, Any], input_data: Dict[str, Any]) -> None:
+    """validate input."""
     if not isinstance(input_data, dict):
         raise SpecValidationError("Input payload must be a JSON object")
     required = input_schema.get("required", [])
