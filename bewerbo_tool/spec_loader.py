@@ -38,10 +38,14 @@ def parse_workflow_spec(payload: Dict[str, Any]) -> WorkflowSpec:
             retries = int(raw_step.get("retries", 0))
         except (TypeError, ValueError) as err:
             raise SpecValidationError(f"Invalid retries value for step '{step_id}'") from err
+        if retries < 0:
+            raise SpecValidationError(f"Invalid retries value for step '{step_id}': must be >= 0")
         try:
             backoff_seconds = float(raw_step.get("backoff_seconds", 0.0))
         except (TypeError, ValueError) as err:
             raise SpecValidationError(f"Invalid backoff_seconds value for step '{step_id}'") from err
+        if backoff_seconds < 0:
+            raise SpecValidationError(f"Invalid backoff_seconds value for step '{step_id}': must be >= 0")
         steps.append(
             WorkflowStep(
                 id=step_id,

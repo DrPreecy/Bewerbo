@@ -141,6 +141,9 @@ class WorkflowEngine:
             self._audit(run, "step_failed", "Step failed", {"step_id": step.id, "error": error_message})
 
             if step.continue_on_error:
+                result.status = StepStatus.SKIPPED
+                run.step_results[step.id] = result
+                run.last_error = None
                 self._audit(run, "step_skipped", "Continuing after failed step", {"step_id": step.id})
                 self._preserve_requested_action(run)
                 self.store.save_run(run)

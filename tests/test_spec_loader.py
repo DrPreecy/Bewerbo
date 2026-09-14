@@ -45,6 +45,29 @@ class TestSpecLoader(unittest.TestCase):
         with self.assertRaises(SpecValidationError):
             parse_workflow_spec(invalid_backoff_payload)
 
+    def test_parse_spec_rejects_negative_retry_backoff(self):
+        negative_retries_payload = {
+            "name": "a",
+            "version": "1",
+            "input_schema": {"required": ["id"]},
+            "steps": [
+                {"id": "x", "type": "transform", "retries": -1},
+            ],
+        }
+        with self.assertRaises(SpecValidationError):
+            parse_workflow_spec(negative_retries_payload)
+
+        negative_backoff_payload = {
+            "name": "a",
+            "version": "1",
+            "input_schema": {"required": ["id"]},
+            "steps": [
+                {"id": "x", "type": "transform", "backoff_seconds": -0.1},
+            ],
+        }
+        with self.assertRaises(SpecValidationError):
+            parse_workflow_spec(negative_backoff_payload)
+
 
 if __name__ == "__main__":
     unittest.main()

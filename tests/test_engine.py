@@ -311,6 +311,41 @@ class TestEngine(unittest.TestCase):
             service.wait(first.run_id, timeout=2)
             self.assertEqual(call_count["n"], 1)
 
+    def test_continue_on_error_marks_step_skipped(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            spec_path = base / "continue_spec.json"
+            spec_path.write_text(
+                json.dumps(
+                    {
+                        "name": "continue",
+                        "version": "1",
+                        "input_schema": {"required": ["item_id", "payload"]},
+                        "steps": [
+                            {
+                                "id": "flaky",
+                                "type": "fail_n_times",
+                                "retries": 0,
+                                "continue_on_error": True,
+                                "params": {"key": "continue", "failures": 1},
+                            },
+                            {"id": "done", "type": "emit_output", "params": {"fields": ["item_id"]}},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            store = JsonStateStore(str(base / "state.json"))
+            engine = WorkflowEngine(store=store, registry=ExecutorRegistry())
+            spec = load_workflow_spec(str(spec_path))
+            run = engine.create_run(spec, {"item_id": "12", "payload": "x"})
+            result = engine.execute(spec, run.run_id)
+
+            self.assertEqual(result.status, RunStatus.COMPLETED)
+            self.assertEqual(result.step_results["flaky"].status.value, "skipped")
+            self.assertIsNone(result.last_error)
+
 
 if __name__ == "__main__":
     unittest.main()

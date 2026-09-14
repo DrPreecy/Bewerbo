@@ -39,6 +39,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     rerun = sub.add_parser("rerun-failed")
     rerun.add_argument("--run-id", required=True)
+    rerun.add_argument("--wait", action="store_true", help="Wait for completion before returning")
+    rerun.add_argument("--timeout", type=float, default=None, help="Optional wait timeout in seconds")
 
     status = sub.add_parser("status")
     status.add_argument("--run-id", required=True)
@@ -80,6 +82,8 @@ def main() -> None:
 
     if args.command == "rerun-failed":
         run = service.rerun_failed_step(spec, args.run_id)
+        if args.wait:
+            run = service.wait(run.run_id, timeout=args.timeout)
         print(json.dumps({"run_id": run.run_id, "status": run.status.value}, indent=2))
         return
 

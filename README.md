@@ -48,7 +48,7 @@ python -m bewerbo_tool.cli \
 - Pause: `... pause --run-id <run-id>`
 - Resume: `... resume --run-id <run-id>`
 - Cancel: `... cancel --run-id <run-id>`
-- Re-run failed step: `... rerun-failed --run-id <run-id>`
+- Re-run failed step: `... rerun-failed --run-id <run-id> --wait`
 
 5. Metrics:
 
