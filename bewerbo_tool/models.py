@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 
 def utc_now_iso() -> str:
+    """utc now iso."""
     return datetime.now(timezone.utc).isoformat()
 
 
@@ -85,6 +86,7 @@ class RunRecord:
     audit_log: List[AuditEvent] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
+        """to dict."""
         return {
             "run_id": self.run_id,
             "workflow_name": self.workflow_name,
@@ -125,6 +127,7 @@ class RunRecord:
 
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> "RunRecord":
+        """from dict."""
         return RunRecord(
             run_id=data["run_id"],
             workflow_name=data["workflow_name"],
