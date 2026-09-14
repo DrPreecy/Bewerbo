@@ -4,9 +4,9 @@ Config-driven workflow automation tool with run state persistence, retries, idem
 
 ## Project layout
 
-- `/home/runner/work/Bewerbo/Bewerbo/bewerbo_tool` - engine, models, executors, service, CLI
-- `/home/runner/work/Bewerbo/Bewerbo/workflows/v1/default_process.json` - versioned workflow definition
-- `/home/runner/work/Bewerbo/Bewerbo/tests` - unit/integration/regression-style tests
+- `bewerbo_tool/` - engine, models, executors, service, CLI
+- `workflows/v1/default_process.json` - versioned workflow definition
+- `tests/` - unit/integration/regression-style tests
 
 ## Quick start
 
@@ -23,8 +23,8 @@ Config-driven workflow automation tool with run state persistence, retries, idem
 
 ```bash
 python -m bewerbo_tool.cli \
-  --spec /home/runner/work/Bewerbo/Bewerbo/workflows/v1/default_process.json \
-  --state /home/runner/work/Bewerbo/Bewerbo/state/runs.json \
+  --spec workflows/v1/default_process.json \
+  --state state/runs.json \
   start \
   --input /absolute/path/to/input.json \
   --idempotency-key item-123
@@ -34,8 +34,8 @@ python -m bewerbo_tool.cli \
 
 ```bash
 python -m bewerbo_tool.cli \
-  --spec /home/runner/work/Bewerbo/Bewerbo/workflows/v1/default_process.json \
-  --state /home/runner/work/Bewerbo/Bewerbo/state/runs.json \
+  --spec workflows/v1/default_process.json \
+  --state state/runs.json \
   status \
   --run-id <run-id>
 ```
@@ -51,8 +51,8 @@ python -m bewerbo_tool.cli \
 
 ```bash
 python -m bewerbo_tool.cli \
-  --spec /home/runner/work/Bewerbo/Bewerbo/workflows/v1/default_process.json \
-  --state /home/runner/work/Bewerbo/Bewerbo/state/runs.json \
+  --spec workflows/v1/default_process.json \
+  --state state/runs.json \
   metrics
 ```
 

@@ -23,11 +23,6 @@ class WorkflowEngine:
     ) -> RunRecord:
         validate_input(spec.input_schema, input_data)
 
-        if idempotency_key:
-            existing = self.store.get_run_by_idempotency_key(idempotency_key)
-            if existing:
-                return existing
-
         run = RunRecord(
             run_id=str(uuid.uuid4()),
             workflow_name=spec.name,
@@ -38,8 +33,7 @@ class WorkflowEngine:
             idempotency_key=idempotency_key,
         )
         self._audit(run, "run_created", "Run created")
-        self.store.save_run(run)
-        return run
+        return self.store.save_run_if_idempotency_absent(run)
 
     def request_action(self, run_id: str, action: str) -> RunRecord:
         run = self._require_run(run_id)
@@ -71,15 +65,15 @@ class WorkflowEngine:
         ]
 
         for i in range(run.current_step_index, len(spec.steps)):
-            refreshed = self._require_run(run.run_id)
-            if refreshed.requested_action == "cancel":
+            run = self._require_run(run.run_id)
+            if run.requested_action == "cancel":
                 run.status = RunStatus.CANCELLED
                 run.requested_action = None
                 run.updated_at = utc_now_iso()
                 self._audit(run, "run_cancelled", "Run cancelled")
                 self.store.save_run(run)
                 return run
-            if refreshed.requested_action == "pause":
+            if run.requested_action == "pause":
                 run.status = RunStatus.PAUSED
                 run.requested_action = None
                 run.current_step_index = i
@@ -129,6 +123,7 @@ class WorkflowEngine:
             if step_status == StepStatus.COMPLETED:
                 completed_step_ids.append(step.id)
                 self._audit(run, "step_completed", "Step completed", {"step_id": step.id, "attempts": attempts})
+                self._preserve_requested_action(run)
                 self.store.save_run(run)
                 continue
 
@@ -137,17 +132,20 @@ class WorkflowEngine:
 
             if step.continue_on_error:
                 self._audit(run, "step_skipped", "Continuing after failed step", {"step_id": step.id})
+                self._preserve_requested_action(run)
                 self.store.save_run(run)
                 continue
 
             self._compensate(spec, run, completed_step_ids)
             run.status = RunStatus.FAILED
+            self._preserve_requested_action(run)
             self.store.save_run(run)
             return run
 
         run.status = RunStatus.COMPLETED
         run.updated_at = utc_now_iso()
         self._audit(run, "run_completed", "Run completed")
+        self._preserve_requested_action(run)
         self.store.save_run(run)
         return run
 
@@ -235,3 +233,10 @@ class WorkflowEngine:
             else:
                 redacted[key] = value
         return redacted
+
+    def _preserve_requested_action(self, run: RunRecord) -> None:
+        if run.requested_action:
+            return
+        latest = self.store.get_run(run.run_id)
+        if latest and latest.requested_action:
+            run.requested_action = latest.requested_action

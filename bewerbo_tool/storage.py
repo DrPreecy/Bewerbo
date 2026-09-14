@@ -30,6 +30,22 @@ class JsonStateStore:
                 data["idempotency"][run.idempotency_key] = run.run_id
             self._write(data)
 
+    def save_run_if_idempotency_absent(self, run: RunRecord) -> RunRecord:
+        with self._lock:
+            data = self._read()
+            if run.idempotency_key:
+                existing_run_id = data["idempotency"].get(run.idempotency_key)
+                if existing_run_id:
+                    payload = data["runs"].get(existing_run_id)
+                    if payload:
+                        return RunRecord.from_dict(payload)
+
+            data["runs"][run.run_id] = run.to_dict()
+            if run.idempotency_key:
+                data["idempotency"][run.idempotency_key] = run.run_id
+            self._write(data)
+            return run
+
     def get_run(self, run_id: str) -> Optional[RunRecord]:
         with self._lock:
             data = self._read()

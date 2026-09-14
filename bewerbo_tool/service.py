@@ -40,8 +40,11 @@ class WorkflowService:
         return self.engine.request_action(run_id, "cancel")
 
     def resume(self, spec: WorkflowSpec, run_id: str) -> RunRecord:
-        run = self.engine.request_action(run_id, "resume")
+        self.engine.request_action(run_id, "resume")
         self._submit(spec, run_id, resume=True)
+        run = self.engine.store.get_run(run_id)
+        if not run:
+            raise KeyError(f"Run not found: {run_id}")
         return run
 
     def rerun_failed_step(self, spec: WorkflowSpec, run_id: str) -> RunRecord:
