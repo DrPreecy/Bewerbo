@@ -18,12 +18,7 @@ class WorkflowService:
         self._futures_lock = Lock()
 
     def start(self, spec: WorkflowSpec, input_data: Dict, idempotency_key: str | None = None) -> RunRecord:
-        run, created_new = self.engine.create_run_with_flag(
-            spec,
-            input_data,
-            idempotency_key=idempotency_key,
-        )
-
+        run, created_new = self.engine.create_run_with_flag(spec, input_data, idempotency_key=idempotency_key)
         if created_new and run.status.value in {"running", "pending"}:
             self._submit(spec, run.run_id, resume=False)
         return run
@@ -46,6 +41,7 @@ class WorkflowService:
         return self.engine.request_action(run_id, "cancel")
 
     def resume(self, spec: WorkflowSpec, run_id: str) -> RunRecord:
+        self._validate_workflow(spec, run_id)
         self.engine.resume_run(run_id)
         self._submit(spec, run_id, resume=True)
         run = self.engine.store.get_run(run_id)
@@ -54,7 +50,8 @@ class WorkflowService:
         return run
 
     def rerun_failed_step(self, spec: WorkflowSpec, run_id: str) -> RunRecord:
-        run = self.engine.prepare_rerun_failed_step(spec, run_id)
+        self._validate_workflow(spec, run_id)
+        self.engine.prepare_rerun_failed_step(spec, run_id)
         self._submit(spec, run_id, resume=True)
         latest = self.engine.store.get_run(run_id)
         if not latest:
@@ -70,3 +67,10 @@ class WorkflowService:
         if not run:
             raise KeyError(f"Run not found: {run_id}")
         return run
+
+    def _validate_workflow(self, spec: WorkflowSpec, run_id: str) -> None:
+        run = self.engine.store.get_run(run_id)
+        if not run:
+            raise KeyError(f"Run not found: {run_id}")
+        if run.workflow_name != spec.name or run.workflow_version != spec.version:
+            raise ValueError("Workflow spec does not match the persisted run")
