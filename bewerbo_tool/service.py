@@ -50,7 +50,12 @@ class WorkflowService:
         return run
 
     def rerun_failed_step(self, spec: WorkflowSpec, run_id: str) -> RunRecord:
-        return self.engine.rerun_failed_step(spec, run_id)
+        run = self.engine.prepare_rerun_failed_step(spec, run_id)
+        self._submit(spec, run_id, resume=True)
+        latest = self.engine.store.get_run(run_id)
+        if not latest:
+            raise KeyError(f"Run not found: {run_id}")
+        return latest
 
     def wait(self, run_id: str, timeout: float | None = None) -> RunRecord:
         with self._futures_lock:

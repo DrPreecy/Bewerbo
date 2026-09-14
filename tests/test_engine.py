@@ -239,6 +239,44 @@ class TestEngine(unittest.TestCase):
             service.wait(run_ids[0], timeout=2)
             self.assertEqual(call_count["n"], 1)
 
+    def test_service_rerun_failed_step_uses_async_submission(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            spec_path = base / "rerun_service_spec.json"
+            spec_path.write_text(
+                json.dumps(
+                    {
+                        "name": "rerun_service",
+                        "version": "1",
+                        "input_schema": {"required": ["item_id", "payload"]},
+                        "steps": [
+                            {
+                                "id": "flaky",
+                                "type": "fail_n_times",
+                                "retries": 1,
+                                "params": {"key": "service-rerun", "failures": 2},
+                            },
+                            {"id": "done", "type": "emit_output", "params": {"fields": ["item_id"]}},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            store = JsonStateStore(str(base / "state.json"))
+            engine = WorkflowEngine(store=store, registry=ExecutorRegistry())
+            spec = load_workflow_spec(str(spec_path))
+            service = WorkflowService(engine=engine, max_concurrent_runs=1)
+
+            run = engine.create_run(spec, {"item_id": "11", "payload": "x"})
+            failed = engine.execute(spec, run.run_id)
+            self.assertEqual(failed.status, RunStatus.FAILED)
+
+            pending = service.rerun_failed_step(spec, run.run_id)
+            self.assertEqual(pending.status, RunStatus.PENDING)
+
+            completed = service.wait(run.run_id, timeout=2)
+            self.assertEqual(completed.status, RunStatus.COMPLETED)
+
 
 if __name__ == "__main__":
     unittest.main()

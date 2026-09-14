@@ -150,6 +150,10 @@ class WorkflowEngine:
         return run
 
     def rerun_failed_step(self, spec: WorkflowSpec, run_id: str) -> RunRecord:
+        run = self.prepare_rerun_failed_step(spec, run_id)
+        return self.execute(spec, run.run_id, resume=True)
+
+    def prepare_rerun_failed_step(self, spec: WorkflowSpec, run_id: str) -> RunRecord:
         run = self._require_run(run_id)
         if run.status != RunStatus.FAILED:
             raise ValueError("Run is not in failed status")
@@ -164,13 +168,16 @@ class WorkflowEngine:
         if failed_index is None:
             raise ValueError("No failed step found")
 
+        for step in spec.steps[failed_index:]:
+            run.step_results.pop(step.id, None)
+
         run.current_step_index = failed_index
         run.status = RunStatus.PENDING
         run.last_error = None
         run.updated_at = utc_now_iso()
         self._audit(run, "rerun_failed_step", "Re-running failed step", {"step_index": failed_index})
         self.store.save_run(run)
-        return self.execute(spec, run.run_id, resume=True)
+        return run
 
     def metrics(self) -> Dict[str, int]:
         runs = self.store.list_runs().values()
@@ -229,7 +236,17 @@ class WorkflowEngine:
 
     def _redact_value(self, key: str, value):
         lowered = key.lower()
-        if any(token in lowered for token in ("secret", "token", "password", "key")):
+        sensitive_tokens = (
+            "secret",
+            "token",
+            "password",
+            "api_key",
+            "private_key",
+            "access_key",
+            "client_secret",
+            "authorization",
+        )
+        if lowered in sensitive_tokens or any(token in lowered for token in ("secret", "token", "password")):
             return "***REDACTED***"
         if isinstance(value, dict):
             return {k: self._redact_value(k, v) for k, v in value.items()}
