@@ -4,19 +4,43 @@ import json
 import os
 import threading
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Iterator, Optional, Tuple
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows fallback
+    fcntl = None
 
 from .models import RunRecord
 
 
 class JsonStateStore:
+    _locks_guard = threading.Lock()
+    _path_locks: Dict[str, threading.RLock] = {}
+
     def __init__(self, path: str):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
-        if not self.path.exists():
-            self._write({"runs": {}, "idempotency": {}})
+        self._lock_path = self.path.with_suffix(f"{self.path.suffix}.lock")
+        with self._locks_guard:
+            self._lock = self._path_locks.setdefault(str(self.path.resolve()), threading.RLock())
+        with self._transaction():
+            if not self.path.exists():
+                self._write({"runs": {}, "idempotency": {}})
+
+    @contextmanager
+    def _transaction(self) -> Iterator[None]:
+        with self._lock:
+            with self._lock_path.open("a+", encoding="utf-8") as lock_file:
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    if fcntl is not None:
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     def _read(self) -> Dict:
         return json.loads(self.path.read_text(encoding="utf-8"))
@@ -27,15 +51,26 @@ class JsonStateStore:
         os.replace(tmp_path, self.path)
 
     def save_run(self, run: RunRecord) -> None:
-        with self._lock:
+        with self._transaction():
             data = self._read()
             data["runs"][run.run_id] = run.to_dict()
             if run.idempotency_key:
                 data["idempotency"][run.idempotency_key] = run.run_id
             self._write(data)
 
+    def save_run_preserving_requested_action(self, run: RunRecord) -> None:
+        with self._transaction():
+            data = self._read()
+            latest = data["runs"].get(run.run_id)
+            if latest and latest.get("requested_action") and not run.requested_action:
+                run.requested_action = latest["requested_action"]
+            data["runs"][run.run_id] = run.to_dict()
+            if run.idempotency_key:
+                data["idempotency"][run.idempotency_key] = run.run_id
+            self._write(data)
+
     def save_run_if_idempotency_absent(self, run: RunRecord) -> Tuple[RunRecord, bool]:
-        with self._lock:
+        with self._transaction():
             data = self._read()
             if run.idempotency_key:
                 existing_run_id = data["idempotency"].get(run.idempotency_key)
@@ -51,13 +86,13 @@ class JsonStateStore:
             return run, True
 
     def get_run(self, run_id: str) -> Optional[RunRecord]:
-        with self._lock:
+        with self._transaction():
             data = self._read()
             payload = data["runs"].get(run_id)
             return RunRecord.from_dict(payload) if payload else None
 
     def get_run_by_idempotency_key(self, key: str) -> Optional[RunRecord]:
-        with self._lock:
+        with self._transaction():
             data = self._read()
             run_id = data["idempotency"].get(key)
             if not run_id:
@@ -66,6 +101,6 @@ class JsonStateStore:
             return RunRecord.from_dict(payload) if payload else None
 
     def list_runs(self) -> Dict[str, RunRecord]:
-        with self._lock:
+        with self._transaction():
             data = self._read()
             return {run_id: RunRecord.from_dict(payload) for run_id, payload in data["runs"].items()}
