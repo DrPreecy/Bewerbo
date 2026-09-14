@@ -27,8 +27,11 @@ python -m bewerbo_tool.cli \
   --state state/runs.json \
   start \
   --input /absolute/path/to/input.json \
+  --wait \
   --idempotency-key item-123
 ```
+
+`start` runs asynchronously by default; use `--wait` (optionally with `--timeout`) to block until completion.
 
 3. Check status:
 

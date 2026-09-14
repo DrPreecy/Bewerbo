@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
+import uuid
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -20,7 +22,9 @@ class JsonStateStore:
         return json.loads(self.path.read_text(encoding="utf-8"))
 
     def _write(self, data: Dict) -> None:
-        self.path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+        tmp_path = self.path.with_name(f"{self.path.name}.{uuid.uuid4().hex}.tmp")
+        tmp_path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+        os.replace(tmp_path, self.path)
 
     def save_run(self, run: RunRecord) -> None:
         with self._lock:

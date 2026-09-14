@@ -8,6 +8,7 @@ from pathlib import Path
 from bewerbo_tool.engine import WorkflowEngine
 from bewerbo_tool.executors import ExecutorRegistry
 from bewerbo_tool.models import RunStatus
+from bewerbo_tool.service import WorkflowService
 from bewerbo_tool.spec_loader import load_workflow_spec
 from bewerbo_tool.storage import JsonStateStore
 
@@ -196,6 +197,47 @@ class TestEngine(unittest.TestCase):
 
             recovered = engine.rerun_failed_step(spec, run.run_id)
             self.assertEqual(recovered.status, RunStatus.COMPLETED)
+
+    def test_service_deduplicates_concurrent_start_submissions(self):
+        with tempfile.TemporaryDirectory() as td:
+            engine, spec = self._engine_and_spec(Path(td))
+            service = WorkflowService(engine=engine, max_concurrent_runs=2)
+
+            original_execute = engine.execute
+            counter_lock = threading.Lock()
+            call_count = {"n": 0}
+
+            def counted_execute(spec_arg, run_id_arg, resume=False):
+                with counter_lock:
+                    call_count["n"] += 1
+                time.sleep(0.05)
+                return original_execute(spec_arg, run_id_arg, resume=resume)
+
+            engine.execute = counted_execute  # type: ignore[method-assign]
+
+            barrier = threading.Barrier(2)
+            run_ids = []
+
+            def worker():
+                barrier.wait()
+                run = service.start(
+                    spec,
+                    {"item_id": "42", "payload": "x"},
+                    idempotency_key="same-key",
+                )
+                run_ids.append(run.run_id)
+
+            t1 = threading.Thread(target=worker)
+            t2 = threading.Thread(target=worker)
+            t1.start()
+            t2.start()
+            t1.join(timeout=2)
+            t2.join(timeout=2)
+
+            self.assertEqual(len(run_ids), 2)
+            self.assertEqual(run_ids[0], run_ids[1])
+            service.wait(run_ids[0], timeout=2)
+            self.assertEqual(call_count["n"], 1)
 
 
 if __name__ == "__main__":

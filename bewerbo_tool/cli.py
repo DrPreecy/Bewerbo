@@ -25,6 +25,8 @@ def build_parser() -> argparse.ArgumentParser:
     start = sub.add_parser("start")
     start.add_argument("--input", required=True, help="Absolute path to run input JSON")
     start.add_argument("--idempotency-key")
+    start.add_argument("--wait", action="store_true", help="Wait for completion before returning")
+    start.add_argument("--timeout", type=float, default=None, help="Optional wait timeout in seconds")
 
     pause = sub.add_parser("pause")
     pause.add_argument("--run-id", required=True)
@@ -56,6 +58,8 @@ def main() -> None:
     if args.command == "start":
         run_input = _read_json(args.input)
         run = service.start(spec, run_input, idempotency_key=args.idempotency_key)
+        if args.wait:
+            run = service.wait(run.run_id, timeout=args.timeout)
         print(json.dumps({"run_id": run.run_id, "status": run.status.value}, indent=2))
         return
 
